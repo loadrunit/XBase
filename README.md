@@ -2,8 +2,8 @@
 PostgreSQL As Oracle  --  Make PostgreSQL compatible with Oracle
 
 
-# projects pao depends on
+# Projects pao depends on
 * postgresql
 * orafce
 
-# implemented features including
+# Implemented features including
