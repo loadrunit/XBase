@@ -1,4 +1,4 @@
-# pao
+# PAO
 PostgreSQL As Oracle  --  Make PostgreSQL compatible with Oracle
 
 
