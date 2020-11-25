@@ -52,4 +52,7 @@ extern bool extension_file_exists(const char *extensionName);
 extern ObjectAddress AlterExtensionNamespace(const char *extensionName, const char *newschema,
 											 Oid *oldschema);
 
+extern int  load_extension(const char *which);
+extern int  drop_extension(const char *which);
+
 #endif							/* EXTENSION_H */

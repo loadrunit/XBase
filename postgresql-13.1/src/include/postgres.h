@@ -761,4 +761,19 @@ extern Datum Float8GetDatum(float8 X);
 #define Float8GetDatumFast(X) PointerGetDatum(&(X))
 #endif
 
+
+/*
+ *
+ */
+typedef enum
+{
+	SQL_DIALECT_POSTGRES  = 0,
+	SQL_DIALECT_ORACLE       ,
+	SQL_DIALECT_MAX
+
+} SQL_DIALECT_OPTION;
+
+extern int sql_dialect_switch_to(int new, int old);
+
+
 #endif							/* POSTGRES_H */

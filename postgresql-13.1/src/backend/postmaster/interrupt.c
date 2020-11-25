@@ -26,6 +26,8 @@
 volatile sig_atomic_t ConfigReloadPending = false;
 volatile sig_atomic_t ShutdownRequestPending = false;
 
+volatile sig_atomic_t previous_sql_dialect = -1;
+
 /*
  * Simple interrupt handler for main loops of background processes.
  */
@@ -58,6 +60,8 @@ SignalHandlerForConfigReload(SIGNAL_ARGS)
 	int			save_errno = errno;
 
 	ConfigReloadPending = true;
+	previous_sql_dialect = sql_dialect;
+
 	SetLatch(MyLatch);
 
 	errno = save_errno;

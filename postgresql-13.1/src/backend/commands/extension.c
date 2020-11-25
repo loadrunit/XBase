@@ -3450,3 +3450,82 @@ read_whole_file(const char *filename, int *length)
 	buf[*length] = '\0';
 	return buf;
 }
+
+
+/*
+ ******************************************************************************
+ * 
+ * load an extension.
+ *
+ * Note: create the specified extention by exectute_sql_string, the same 
+ *       restrictions applied to exectute_sql_string as noted to appled to
+ *       load_extension too.
+ *
+ * Returns:
+ *       0           : the given extension has been created successfully
+ *       -1          : memory allocation failure 
+ * 
+ ******************************************************************************
+ */
+
+int
+load_extension(const char *which)
+{
+	char       *command   = "CREATE EXTENSION IF NOT EXISTS ;";
+	int         buff_size = strlen(which) + strlen(command) + 1;
+	char       *sql_buff  = palloc0(buff_size);
+
+	ereport(DEBUG1, (errmsg("loading extension %s.", which)));
+
+	if (sql_buff == NULL) {
+		ereport(WARNING, (errmsg("load_extension failed due to memory allocation failure.")));
+		return -1;
+	}
+
+	(void)snprintf(sql_buff, buff_size - 1, "CREATE EXTENSION IF NOT EXISTS %s;", which);
+	ereport(DEBUG1, (errmsg("executing statement %s.", sql_buff)));
+	execute_sql_string(sql_buff);
+
+	ereport(DEBUG1, (errmsg("loaded extension %s.", which)));
+
+	return 0;
+}
+
+/*
+ ******************************************************************************
+ * 
+ * drop an extension.
+ *
+ * Note: drop the specified extention by exectute_sql_string, the same 
+ *       restrictions applied to exectute_sql_string as noted to appled to
+ *       load_extension too.
+ *
+ * Returns:
+ *       0           : the given extension has been dropped successfully
+ *       -1          : memory allocation failure 
+ * 
+ ******************************************************************************
+ */
+
+int
+drop_extension(const char *which)
+{
+	char       *command   = "DROP EXTENSION IF EXISTS ;";
+	int         buff_size = strlen(which) + strlen(command) + 1;
+	char       *sql_buff  = palloc0(buff_size);
+
+	ereport(DEBUG1, (errmsg("dropping extension %s.", which)));
+
+	if (sql_buff == NULL) {
+		ereport(WARNING, (errmsg("drop_extension failed due to memory allocation failure.")));
+		return -1;
+	}
+
+	(void)snprintf(sql_buff, buff_size - 1, "DROP EXTENSION IF EXISTS %s;", which);
+	ereport(DEBUG1, (errmsg("executing statement %s.", sql_buff)));
+	execute_sql_string(sql_buff);
+
+	ereport(DEBUG1, (errmsg("dropped extension %s.", which)));
+
+	return 0;
+}

@@ -17,7 +17,7 @@ REGRESS = orafce orafce2 dbms_output dbms_utility files varchar2 nvarchar2 aggre
 REGRESS_OPTS = --schedule=parallel_schedule --encoding=utf8
 
 #override CFLAGS += -Wextra -Wimplicit-fallthrough=0
-
+NO_PGXS = 1
 ifdef NO_PGXS
 subdir = contrib/$(MODULE_big)
 top_builddir = ../..

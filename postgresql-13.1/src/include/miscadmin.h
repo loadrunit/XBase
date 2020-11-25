@@ -261,6 +261,7 @@ extern int	VacuumCostBalance;
 extern bool VacuumCostActive;
 
 extern double vacuum_cleanup_index_scale_factor;
+extern int  sql_dialect; 
 
 
 /* in tcop/postgres.c */

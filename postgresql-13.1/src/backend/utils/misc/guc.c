@@ -65,6 +65,7 @@
 #include "postmaster/bgwriter.h"
 #include "postmaster/postmaster.h"
 #include "postmaster/syslogger.h"
+#include "postmaster/interrupt.h"
 #include "postmaster/walwriter.h"
 #include "replication/logicallauncher.h"
 #include "replication/reorderbuffer.h"
@@ -221,6 +222,9 @@ static bool check_recovery_target_lsn(char **newval, void **extra, GucSource sou
 static void assign_recovery_target_lsn(const char *newval, void *extra);
 static bool check_primary_slot_name(char **newval, void **extra, GucSource source);
 static bool check_default_with_oids(bool *newval, void **extra, GucSource source);
+
+static bool check_sql_dialect(int *newval, void **extra, GucSource source);
+
 
 /* Private functions in guc-file.l that need to be called from guc.c */
 static ConfigVariable *ProcessConfigFileInternal(GucContext context,
@@ -485,6 +489,12 @@ const struct config_enum_entry ssl_protocol_versions_info[] = {
 	{"TLSv1.2", PG_TLS1_2_VERSION, false},
 	{"TLSv1.3", PG_TLS1_3_VERSION, false},
 	{NULL, 0, false}
+};
+
+const struct config_enum_entry sql_dialect_options[] = {
+	{"postgres", SQL_DIALECT_POSTGRES, false},
+	{"oracle",   SQL_DIALECT_ORACLE,   false},
+	{NULL,       0,                    false}
 };
 
 StaticAssertDecl(lengthof(ssl_protocol_versions_info) == (PG_TLS1_3_VERSION + 2),
@@ -4765,6 +4775,22 @@ static struct config_enum ConfigureNamesEnum[] =
 		ssl_protocol_versions_info,
 		NULL, NULL, NULL
 	},
+
+	{
+		{"sql_dialect", PGC_SUSET, CUSTOM_OPTIONS,
+		    gettext_noop("Controls the Database's implementation of SQL specification."),
+			gettext_noop("We name it a SQL dialect which on basis of the well known SQL "
+						 "specification but has its own customized features. UXDB supports three "
+						 " different SQL dialect from each other. Before any statement execution "
+						 "in a session, this can be set to one of [uxdb | postgres | oracle ] "
+						 "representing the according SQL dialect of UXDB, PostgreSQL or Oracle, "
+						 "the default is UXDB' SQL dialect."),
+		},
+		&sql_dialect,
+		SQL_DIALECT_POSTGRES, sql_dialect_options,
+		check_sql_dialect, NULL, NULL
+	},
+
 
 	/* End-of-list marker */
 	{
@@ -12036,5 +12062,44 @@ check_default_with_oids(bool *newval, void **extra, GucSource source)
 
 	return true;
 }
+
+/*
+ *******************************************************************************
+ *
+ * We do the real sql dialect switch here, because we know that the check hook
+ * provide the new value of sql dialect an not yet asign the new value to it,
+ * so we can do it here successfully.
+ *
+ *******************************************************************************
+ */ 
+static bool check_sql_dialect(int *newval, void **extra, GucSource source)
+{
+	int     ret = 0;
+
+	/*
+	 * if the change does not come from a user session, because we have not ye a
+	 * ready to execute sql environment do nothing,
+	 * for other sources, we do not know the previous value, so we can not do
+	 * the leave or clean stuff for the previous value, in that case, we reset
+	 * all the sql dialect options except the new value, and then we enter the
+	 * expected sql dialect as the setting's new value.
+	 *	
+	 */
+	if (source != PGC_S_SESSION) {
+		return true;
+	}
+	
+	ret = sql_dialect_switch_to(*newval, previous_sql_dialect);
+	if (ret < 0) {
+		ereport(WARNING, (errmsg("parameter sql dialect failed to change to %d from %d.", *newval, sql_dialect)),
+				(errhint("please check the debug log for details"))); 
+		return false;
+	}
+	previous_sql_dialect = *newval;
+	ereport(LOG_SERVER_ONLY, (errmsg("parameter sql dialect changed to %d from %d ok.", *newval, sql_dialect))); 
+
+	return true;
+}
+
 
 #include "guc-file.c"

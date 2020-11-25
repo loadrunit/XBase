@@ -23,6 +23,7 @@
 
 extern PGDLLIMPORT volatile sig_atomic_t ConfigReloadPending;
 extern PGDLLIMPORT volatile sig_atomic_t ShutdownRequestPending;
+extern PGDLLIMPORT volatile sig_atomic_t previous_sql_dialect;
 
 extern void HandleMainLoopInterrupts(void);
 extern void SignalHandlerForConfigReload(SIGNAL_ARGS);

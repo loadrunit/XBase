@@ -42,6 +42,7 @@
 #include "catalog/pg_type.h"
 #include "commands/async.h"
 #include "commands/prepare.h"
+#include "commands/extension.h"
 #include "executor/spi.h"
 #include "jit/jit.h"
 #include "libpq/libpq.h"
@@ -100,6 +101,9 @@ int			max_stack_depth = 100;
 
 /* wait N seconds to allow attach from a debugger */
 int			PostAuthDelay = 0;
+
+/* GUC variable for SQL dialect selection                       */
+int         sql_dialect   = SQL_DIALECT_POSTGRES;
 
 
 
@@ -191,6 +195,7 @@ static void drop_unnamed_stmt(void);
 static void log_disconnections(int code, Datum arg);
 static void enable_statement_timeout(void);
 static void disable_statement_timeout(void);
+static int  setup_sql_dialect(void); 
 
 
 /* ----------------------------------------------------------------
@@ -3783,6 +3788,7 @@ PostgresMain(int argc, char *argv[],
 	sigjmp_buf	local_sigjmp_buf;
 	volatile bool send_ready_for_query = true;
 	bool		disable_idle_in_transaction_timeout = false;
+	int         ret;
 
 	/* Initialize startup process environment if necessary. */
 	if (!IsUnderPostmaster)
@@ -4151,6 +4157,12 @@ PostgresMain(int argc, char *argv[],
 	if (!ignore_till_sync)
 		send_ready_for_query = true;	/* initially, or after error */
 
+	ret = setup_sql_dialect();
+	if (ret < 0) {
+		ereport(FATAL, (errmsg("failed to setup sql dialect, return value %d", ret),
+						errhint("please check your configrations first")));
+	}
+
 	/*
 	 * Non-error queries loop here.
 	 */
@@ -4285,6 +4297,12 @@ PostgresMain(int argc, char *argv[],
 		{
 			ConfigReloadPending = false;
 			ProcessConfigFile(PGC_SIGHUP);
+
+			ret = setup_sql_dialect();
+			if (ret < 0) {
+				ereport(FATAL, (errmsg("failed to setup sql dialect, return value %d", ret),
+										  errhint("please check your configrations first")));
+			}
 		}
 
 		/*
@@ -4779,3 +4797,179 @@ disable_statement_timeout(void)
 	if (get_timeout_active(STATEMENT_TIMEOUT))
 		disable_timeout(STATEMENT_TIMEOUT, false);
 }
+
+
+/*
+ *******************************************************************************
+ *
+ * Do the real sql dialect switch work
+ *
+ * Returns:
+ *         0         : ok
+ *         -1        : failure
+ *
+ *******************************************************************************
+ */ 
+static
+int sql_dialect_enter(int new)
+{
+	int    ret;
+
+	if (new == SQL_DIALECT_ORACLE) {
+		ret = load_extension("orafce");
+		if (ret < 0) {
+			ereport(WARNING, (errmsg("failed to enter sql dialect %d mode", new)));
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+/*
+ *******************************************************************************
+ *
+ * Do the real sql dialect switch work
+ *
+ * Returns:
+ *         0         : ok
+ *         -1        : failure
+ *
+ *******************************************************************************
+ */ 
+static
+int sql_dialect_leave(int old)
+{
+	int    ret;
+
+	if (old == SQL_DIALECT_ORACLE) {
+		ret = drop_extension("orafce");
+		if (ret < 0) {
+			ereport(WARNING, (errmsg("failed to clean sql dialect %d mode", old)));
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+
+/*
+ *******************************************************************************
+ *
+ * Reset all the sql dialect options execpt the target one
+ *
+ * Returns:
+ *         0         : ok
+ *         -1        : failure
+ *
+ *******************************************************************************
+ */ 
+static
+int sql_dialect_reset(int except)
+{
+	int    ret;
+	int    loop;
+
+	for (loop = 0; loop < SQL_DIALECT_MAX; loop++) {
+		if (except != loop) {
+			ret = sql_dialect_leave(loop); 
+			if (ret < 0) {
+				ereport(WARNING, (errmsg("sql dialect failed reset sql dialect %d.", loop)));
+				return -1;
+			}
+		}
+	}
+
+	return 0;
+}
+
+
+
+/*
+ *******************************************************************************
+ *
+ * Do the real sql dialect switch work
+ *
+ * Returns:
+ *         0         : ok
+ *         -1        : failure
+ *
+ *******************************************************************************
+ */ 
+int sql_dialect_switch_to(int new, int old)
+{
+	int    ret;
+
+
+	if (old == -1) {
+		ret = sql_dialect_reset(new); 
+		if (ret < 0) {
+			ereport(WARNING, (errmsg("sql dialect failed resetting sql dialects except %d.", new)));
+			return -1;
+		}
+
+	} else {
+		ret = sql_dialect_leave(old); 
+		if (ret < 0) {
+			ereport(WARNING, (errmsg("sql dialect failed switch to %d from %d.", new, old)));
+			return -1;
+		}
+	}
+
+	ret = sql_dialect_enter(new);
+	if (ret < 0) {
+		ereport(WARNING, (errmsg("sql dialect failed switch to %d from %d.", new, old)));
+		return -1;
+	}
+
+	return 0;
+}
+
+
+/*
+ *******************************************************************************
+ *
+ * Setup a SQL dialect environment for a session according to configurations 
+ *
+ * Returns:
+ *         0         : ok
+ *         -1        : failure
+ *
+ *******************************************************************************
+ */ 
+int setup_sql_dialect(void)
+{
+	int    ret;
+	int    where_to_send_output_saved = whereToSendOutput;
+	
+	if (sql_dialect == previous_sql_dialect) {
+		return 0;
+	}
+
+	start_xact_command();
+	whereToSendOutput = DestNone;
+
+	PG_TRY();
+	{
+		ret = sql_dialect_switch_to(sql_dialect, previous_sql_dialect);
+		if (ret < 0) {
+			ereport(LOG_SERVER_ONLY, (errmsg("failed to switch sql dialect to %d from -1, return value %d", 
+											 sql_dialect, ret)));
+			return -1;
+		}
+		previous_sql_dialect = sql_dialect;
+	}
+	PG_FINALLY();
+	{}
+	PG_END_TRY();
+
+	finish_xact_command();
+
+	whereToSendOutput = where_to_send_output_saved;
+
+	return 0;
+}
+
+
+
