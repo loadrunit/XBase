@@ -1,8 +1,8 @@
-# PAO
+# XBASE
 PostgreSQL As Oracle  --  Make PostgreSQL compatible with Oracle
 
 
-# Projects pao depends on
+# Projects XBASE depends on
 * postgresql
 * orafce
 
